@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>색상표 만들기</title>
+    <style>
+        .container {
+            font-family: sans-serif;
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 20px;
+            background: #f0f0f0;
+            border: 2px solid #999;
+            border-radius: 6px;
+        }
+
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .input-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #ddd;
+            padding: 12px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
+        }
+
+        .color-picker {
+            width: 50px;
+            height: 36px;
+            border: 1px solid #aaa;
+            padding: 2px;
+            cursor: pointer;
+            background: white;
+        }
+
+        .color-text-input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .generate-btn {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .generate-btn:hover {
+            background-color: #1558b0;
+        }
+
+        .palette-label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .palette-section {
+            margin-bottom: 16px;
+        }
+
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            background: #ccc;
+            border: 2px inset #aaa;
+            padding: 8px;
+        }
+
+        .swatch {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 1px solid rgba(0,0,0,0.2);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .swatch:hover {
+            border: 2px solid #000;
+            transform: scale(1.15);
+            z-index: 10;
+        }
+
+        .selected-area {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: #ddd;
+            border: 1px solid #aaa;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 16px;
+        }
+
+        .selected-preview {
+            width: 60px;
+            height: 60px;
+            border: 2px inset #aaa;
+        }
+
+        .selected-info {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .selected-hex {
+            font-size: 20px;
+            font-weight: bold;
+            color: #111;
+            letter-spacing: 1px;
+        }
+
+        .selected-rgb {
+            color: #555;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="title">색상 팔레트</h2>
+
+        <div class="input-area">
+            <input type="color" class="color-picker" id="colorPicker" value="#1a73e8">
+            <input type="text" class="color-text-input" id="colorText" placeholder="색상 입력 (예: red, #ff0000, rgb(255,0,0))">
+            <button class="generate-btn" onclick="generatePalette()">생성</button>
+        </div>
+
+        <div class="palette-section">
+            <div class="palette-label">밝기 변화</div>
+            <div class="palette-grid" id="lightnessGrid"></div>
+        </div>
+
+        <div class="palette-section">
+            <div class="palette-label">채도 변화</div>
+            <div class="palette-grid" id="saturationGrid"></div>
+        </div>
+
+        <div class="palette-section">
+            <div class="palette-label">유사 색조</div>
+            <div class="palette-grid" id="hueGrid"></div>
+        </div>
+
+        <div class="selected-area">
+            <div class="selected-preview" id="selectedPreview"></div>
+            <div class="selected-info">
+                <div class="selected-hex" id="selectedHex">-</div>
+                <div class="selected-rgb" id="selectedRgb">-</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 색상 입력기 ↔ 텍스트 입력 동기화
+        document.getElementById('colorPicker').addEventListener('input', function () {
+            document.getElementById('colorText').value = this.value;
+        });
+
+        // 색상 문자열 → { r, g, b }
+        function parseColor(input) {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 1;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = input;
+            ctx.fillRect(0, 0, 1, 1);
+            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+            return { r, g, b };
+        }
+
+        // RGB → HEX
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0').toUpperCase()).join('');
+        }
+
+        // RGB → HSL
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+            if (max === min) {
+                h = s = 0;
+            } else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                    case g: h = ((b - r) / d + 2) / 6; break;
+                    case b: h = ((r - g) / d + 4) / 6; break;
+                }
+            }
+            return { h: h * 360, s: s * 100, l: l * 100 };
+        }
+
+        // HSL → RGB
+        function hslToRgb(h, s, l) {
+            h /= 360; s /= 100; l /= 100;
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        function clamp(val, min, max) {
+            return Math.min(Math.max(val, min), max);
+        }
+
+        function createSwatch(hex, r, g, b) {
+            const div = document.createElement('div');
+            div.className = 'swatch';
+            div.style.backgroundColor = hex;
+            div.title = hex;
+            div.onclick = () => selectColor(hex, r, g, b);
+            return div;
+        }
+
+        function selectColor(hex, r, g, b) {
+            document.getElementById('selectedPreview').style.backgroundColor = hex;
+            document.getElementById('selectedHex').textContent = hex;
+            document.getElementById('selectedRgb').textContent = `RGB(${r}, ${g}, ${b})`;
+        }
+
+        function generatePalette() {
+            const input = document.getElementById('colorText').value.trim() || document.getElementById('colorPicker').value;
+            let parsed;
+            try {
+                parsed = parseColor(input);
+            } catch (e) {
+                alert('유효하지 않은 색상입니다.');
+                return;
+            }
+
+            const { r, g, b } = parsed;
+            const { h, s, l } = rgbToHsl(r, g, b);
+
+            // 밝기 변화 (10단계)
+            const lightnessGrid = document.getElementById('lightnessGrid');
+            lightnessGrid.innerHTML = '';
+            for (let i = 0; i < 10; i++) {
+                const newL = 5 + i * 9;
+                const rgb = hslToRgb(h, s, newL);
+                const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+                lightnessGrid.appendChild(createSwatch(hex, rgb.r, rgb.g, rgb.b));
+            }
+
+            // 채도 변화 (10단계)
+            const saturationGrid = document.getElementById('saturationGrid');
+            saturationGrid.innerHTML = '';
+            for (let i = 0; i < 10; i++) {
+                const newS = i * 10 + 5;
+                const rgb = hslToRgb(h, newS, clamp(l, 20, 80));
+                const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+                saturationGrid.appendChild(createSwatch(hex, rgb.r, rgb.g, rgb.b));
+            }
+
+            // 유사 색조 (10단계, ±45도 범위)
+            const hueGrid = document.getElementById('hueGrid');
+            hueGrid.innerHTML = '';
+            for (let i = 0; i < 10; i++) {
+                const newH = (h - 45 + i * 10 + 360) % 360;
+                const rgb = hslToRgb(newH, clamp(s, 40, 90), clamp(l, 30, 70));
+                const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+                hueGrid.appendChild(createSwatch(hex, rgb.r, rgb.g, rgb.b));
+            }
+
+            // 기준 색상 선택 표시
+            selectColor(rgbToHex(r, g, b), r, g, b);
+
+            // 컬러피커 동기화
+            document.getElementById('colorPicker').value = rgbToHex(r, g, b);
+        }
+
+        // 초기 실행
+        document.getElementById('colorText').value = '#1A73E8';
+        generatePalette();
+    </script>
+</body>
+</html>
